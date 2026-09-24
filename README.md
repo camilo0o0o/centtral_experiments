@@ -12,7 +12,7 @@ Each experiment is a folder in `src/experiments/NNN-slug/`:
 
 - `meta.json`: `{ title, description, date, forkedFrom? }`
 - `sketch.js`: `export default function ({ container, gui, theme }) { ... }`, where `container` is the stage element, `gui` is a lil-gui instance and `theme` holds the design tokens (`theme.bg`, `theme.ink`, …). Sketches use `theme.bg` for their background by default; set your own color in the sketch to override it.
-- `thumb.png`: the grid screenshot. Press **S** on the experiment page (dev only) to save one.
+- `thumb.webp`: the grid screenshot (800px wide). Press **S** on the experiment page (dev only) to save one.
 
 Press **H** to hide or show the controls panel.
 

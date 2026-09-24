@@ -29,16 +29,25 @@ export async function renderExperiment(app, exp) {
   })
 }
 
-// Dev only: send the current canvas frame to the Vite plugin, which writes thumb.png.
-// WebGL canvases need `preserveDrawingBuffer: true` or the capture comes out blank.
+const THUMB_WIDTH = 800
+
+// Dev only: send the current canvas frame, scaled down to WebP, to the Vite plugin,
+// which writes thumb.webp. WebGL canvases need `preserveDrawingBuffer: true` or the capture comes out blank.
 function saveThumbnail(exp, container) {
   const canvas = container.querySelector('canvas')
-  if (!canvas) return toast('No canvas found')
-  canvas.toBlob(async (blob) => {
+  if (!canvas?.width || !canvas.height) return toast('Canvas is empty, nothing to save')
+  const scale = Math.min(1, THUMB_WIDTH / canvas.width)
+  const thumb = document.createElement('canvas')
+  thumb.width = Math.round(canvas.width * scale)
+  thumb.height = Math.round(canvas.height * scale)
+  thumb.getContext('2d').drawImage(canvas, 0, 0, thumb.width, thumb.height)
+  thumb.toBlob(async (blob) => {
     if (!blob) return toast('Canvas is empty, nothing to save')
+    // Safari can't encode WebP and silently returns a PNG instead.
+    if (blob.type !== 'image/webp') return toast('This browser can’t save WebP, use Chrome or Firefox')
     const res = await fetch(`/__thumb?id=${encodeURIComponent(exp.id)}`, { method: 'POST', body: blob })
     toast(res.ok ? 'Thumbnail saved' : 'Thumbnail failed')
-  }, 'image/png')
+  }, 'image/webp', 0.85)
 }
 
 function toast(message) {

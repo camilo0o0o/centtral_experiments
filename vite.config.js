@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 // Dev-only: the experiment page POSTs a PNG here when you press "S",
-// and we write it to src/experiments/<id>/thumb.png.
+// and we write it to src/experiments/<id>/thumb.webp.
 function thumbnailPlugin() {
   return {
     name: 'save-thumbnail',
@@ -19,7 +19,8 @@ function thumbnailPlugin() {
         const chunks = []
         req.on('data', (c) => chunks.push(c))
         req.on('end', () => {
-          fs.writeFileSync(path.join(dir, 'thumb.png'), Buffer.concat(chunks))
+          fs.writeFileSync(path.join(dir, 'thumb.webp'), Buffer.concat(chunks))
+          fs.rmSync(path.join(dir, 'thumb.png'), { force: true })
           res.end('ok')
         })
       })

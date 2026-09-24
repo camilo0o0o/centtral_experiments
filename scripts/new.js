@@ -36,7 +36,7 @@ if (mode === 'new') {
   // Copy everything except the thumbnail, so the grid shows the fork needs its own screenshot.
   fs.cpSync(path.join(EXPERIMENTS, parent), dest, {
     recursive: true,
-    filter: (src) => path.basename(src) !== 'thumb.png',
+    filter: (src) => !path.basename(src).startsWith('thumb.'),
   })
   const parentMeta = JSON.parse(fs.readFileSync(path.join(dest, 'meta.json'), 'utf8'))
   meta.description = parentMeta.description
