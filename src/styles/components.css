@@ -70,6 +70,10 @@
   max-height: calc(100% - 2 * var(--space-md));
   overflow: auto;
   border: var(--border);
+}
+/* lil-gui resets its theme variables on every .lil-gui, so folders need them too */
+.frame > .lil-gui,
+.frame > .lil-gui .lil-gui {
   --background-color: var(--color-bg);
   --text-color: var(--color-ink);
   --title-background-color: var(--color-bg);
@@ -85,8 +89,8 @@
   --input-font-size: 11px;
   --widget-border-radius: 0;
 }
-.frame > .lil-gui .title { font-weight: var(--weight-bold); border-bottom: var(--border); }
-.frame > .lil-gui.closed .title { border-bottom: 0; }
+.frame > .lil-gui .lil-title { font-weight: var(--weight-bold); border-bottom: var(--border); }
+.frame .lil-gui.lil-closed > .lil-title { border-bottom: 0; }
 
 .toast {
   position: fixed;
