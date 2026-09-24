@@ -1,0 +1,24 @@
+/* Design tokens: the only place colors, type and spacing are defined. */
+:root {
+  --color-bg: #fefefe;
+  --color-ink: rgba(0, 0, 0, 0.8);
+  --color-ink-strong: rgba(0, 0, 0, 0.9);
+  --color-muted: #b5b1ad;
+
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --text-sm: 13px;
+  --text-lg: 19px;
+  --leading: 1.4;
+
+  --border: 1px solid var(--color-ink);
+  --space: 20px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+
+  /* Default canvas color for sketches (read in JS via src/theme.js). */
+  --canvas-bg: var(--color-bg);
+}
