@@ -117,7 +117,7 @@ function extent(poly, nx, ny) {
 
 // --- shape: outline + grid + distance fields ---
 
-const MARGIN = 0.5 // world units of empty ground around the rock, room for its cast shadow
+const MARGIN = 0.08 // world units of empty space around the rock
 
 export function buildShape(params, seed) {
   const rand = rngFor(seed, 'shape')
@@ -176,13 +176,12 @@ export function buildShape(params, seed) {
   const mask = new Float32Array(W * H)
   for (let i = 0; i < W * H; i++) mask[i] = rgba[i * 4 + 3] / 255
 
-  // Distances in cells: inside → to the edge, outside → to the rock
+  // Distance in cells from each inside cell to the edge
   const dIn = distanceTransform(W, H, (i) => mask[i] < 0.5)
-  const dOut = distanceTransform(W, H, (i) => mask[i] >= 0.5)
   let maxD = 0
   for (let i = 0; i < W * H; i++) if (dIn[i] > maxD) maxD = dIn[i]
 
-  return { poly, lines, W, H, cell, x0, y0, mask, dIn, dOut, maxD }
+  return { poly, lines, W, H, cell, x0, y0, mask, dIn, maxD }
 }
 
 // --- height: shared dome ---

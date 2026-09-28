@@ -3,7 +3,7 @@
 import { boxBlur, clamp } from './field.js'
 
 export function shade(shape, h, params) {
-  const { W, H, cell, mask, dOut } = shape
+  const { W, H, cell, mask } = shape
   const N = W * H
   const az = (params.azimuth * Math.PI) / 180
   const el = (params.elevation * Math.PI) / 180
@@ -42,17 +42,17 @@ export function shade(shape, h, params) {
   const ao = new Float32Array(N)
   for (let i = 0; i < N; i++) ao[i] = clamp(1 + ((h[i] - blurred[i]) / params.aoRadius) * params.aoStrength, 0, 1)
 
-  // Cast shadows: walk from each cell toward the light; if the terrain rises above the ray, the
-  // cell is in shadow. `softness` fades cells whose ray only just clears the terrain (penumbra).
+  // Cast shadows of the rock onto itself: walk from each rock cell toward the light; if the terrain
+  // rises above the ray, the cell is in shadow. `softness` fades cells whose ray only just clears
+  // the terrain (penumbra).
   const lit = new Float32Array(N).fill(1)
-  if ((params.shadow || params.ground) && el > 0.01) {
+  if (params.shadow && el > 0.01) {
     const stepX = Math.cos(az)
     const stepY = Math.sin(az)
     const rise = Math.tan(el) * cell
-    const reach = maxH / Math.tan(el) / cell // longest shadow, in cells
     const soft = params.softness * 0.5
     const bias = cell
-    // Only the rock can cast shadows, so a ray that has left its bounding box toward the light is done
+    // Only the rock can block the light, so a ray that has left its bounding box toward the light is done
     let bx0 = W
     let bx1 = -1
     let by0 = H
@@ -69,8 +69,7 @@ export function shade(shape, h, params) {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const i = y * W + x
-        const onRock = mask[i] > 0.01
-        if (onRock ? !params.shadow : !params.ground || dOut[i] > reach) continue
+        if (mask[i] <= 0.01) continue
         let rayH = h[i] + bias
         let px = x
         let py = y
@@ -96,25 +95,17 @@ export function shade(shape, h, params) {
     }
   }
 
-  // Tone = darkness 0..1, i.e. how likely a dot is. Rock and ground are mixed by mask coverage.
+  // Tone = darkness 0..1, i.e. how likely a dot is. Only the rock gets tone; its antialiased
+  // mask coverage fades the edge.
   const tone = new Float32Array(N)
   for (let i = 0; i < N; i++) {
     const m = mask[i]
-    let rock = 0
-    if (m > 0) {
-      const d = params.lambert ? 1 - params.lambertWeight * (1 - lambert[i]) : 1
-      const s = params.shadow ? 1 - params.shadowWeight * (1 - lit[i]) : 1
-      const a = params.ao ? 1 - params.aoWeight * (1 - ao[i]) : 1
-      const b = clamp((params.ambient + (1 - params.ambient) * d * s) * a * params.exposure, 0, 1)
-      rock = params.baseTone + (1 - params.baseTone) * Math.pow(1 - b, params.gamma)
-    }
-    let ground = 0
-    if (params.ground && m < 1) {
-      const cast = (1 - lit[i]) * Math.exp((-dOut[i] * cell) / params.groundFade)
-      const contact = params.ao ? (1 - ao[i]) * params.aoWeight : 0 // the base of the rock
-      ground = params.groundStrength * Math.max(cast, contact)
-    }
-    tone[i] = m * rock + (1 - m) * ground
+    if (m <= 0) continue
+    const d = params.lambert ? 1 - params.lambertWeight * (1 - lambert[i]) : 1
+    const s = params.shadow ? 1 - params.shadowWeight * (1 - lit[i]) : 1
+    const a = params.ao ? 1 - params.aoWeight * (1 - ao[i]) : 1
+    const b = clamp((params.ambient + (1 - params.ambient) * d * s) * a * params.exposure, 0, 1)
+    tone[i] = m * (params.baseTone + (1 - params.baseTone) * Math.pow(1 - b, params.gamma))
   }
 
   return { normals, lambert, ao, lit, tone, maxH }

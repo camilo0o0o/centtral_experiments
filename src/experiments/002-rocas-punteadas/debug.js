@@ -62,14 +62,14 @@ export function fieldImage(kind, data, params) {
       case 'lambert':
         gray(i, shade.lambert[i], m)
         break
-      case 'cavity AO': // ground included, so the contact darkening at the base shows
-        gray(i, shade.ao[i], 1)
+      case 'cavity AO':
+        gray(i, shade.ao[i], m)
         break
       case 'shadow':
-        gray(i, shade.lit[i], 1)
+        gray(i, shade.lit[i], m)
         break
       case 'tone':
-        gray(i, 1 - shade.tone[i], 1)
+        gray(i, 1 - shade.tone[i] / Math.max(m, 1e-6), m)
         break
     }
   }

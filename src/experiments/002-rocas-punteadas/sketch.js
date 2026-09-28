@@ -93,9 +93,6 @@ export default function ({ container, gui, theme }) {
     shadow: true,
     shadowWeight: 0.85,
     softness: 0.3,
-    ground: true,
-    groundStrength: 0.5,
-    groundFade: 0.6,
     // dots
     spacing: 2.4,
     dotSize: 1.8,
@@ -210,9 +207,6 @@ export default function ({ container, gui, theme }) {
   fLight.add(params, 'shadow').name('cast shadow').onChange(rerun('shade'))
   fLight.add(params, 'shadowWeight', 0, 1).name('  weight').onChange(rerun('shade'))
   fLight.add(params, 'softness', 0, 1).name('  softness').onChange(rerun('shade'))
-  fLight.add(params, 'ground').name('ground shadow').onChange(rerun('shade'))
-  fLight.add(params, 'groundStrength', 0, 1).name('  strength').onChange(rerun('shade'))
-  fLight.add(params, 'groundFade', 0.05, 2).name('  fade').onChange(rerun('shade'))
 
   const fDots = gui.addFolder('Dots')
   fDots.add(params, 'spacing', 1.2, 10).onChange(rerun('candidates'))
