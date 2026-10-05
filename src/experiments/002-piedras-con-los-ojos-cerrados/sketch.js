@@ -419,6 +419,10 @@ export default function ({ container, gui, theme }) {
       })
       video.srcObject = stream
       await video.play()
+      // The face detector reads the input size from the element's width/height attributes, which
+      // are 0 on a bare <video>; without them it sees an empty image and never finds a face
+      video.width = video.videoWidth
+      video.height = video.videoHeight
     } catch (err) {
       console.error(err)
       throw new Error('No se pudo usar la cámara. Revisa los permisos y recarga la página.')
