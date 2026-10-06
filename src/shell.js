@@ -3,6 +3,8 @@ import { findByNumber, pad } from './experiments.js'
 import { experimentHeader } from './components/header.js'
 import { theme } from './theme.js'
 
+const MOBILE = '(max-width: 600px)'
+
 export async function renderExperiment(app, exp) {
   document.title = `${pad(exp.number)} · ${exp.title}`
   const parent = exp.forkedFrom != null ? findByNumber(exp.forkedFrom) : null
@@ -18,13 +20,25 @@ export async function renderExperiment(app, exp) {
   const { default: sketch } = await exp.load()
   await sketch({ container, gui, theme })
 
-  // No controls registered → no panel.
-  let guiVisible = gui.controllersRecursive().length > 0
-  gui.show(guiVisible)
+  // No controls registered → no panel and no toggle. On narrow screens the panel starts hidden
+  // so it doesn't cover the canvas.
+  const hasControls = gui.controllersRecursive().length > 0
+  const toggle = page.querySelector('.header-toggle')
+  toggle.hidden = !hasControls
+  gui.domElement.id = 'controls'
+  let guiVisible
+  function showControls(visible) {
+    guiVisible = visible
+    gui.show(visible)
+    toggle.textContent = visible ? 'Hide controls' : 'Show controls'
+    toggle.setAttribute('aria-expanded', visible)
+  }
+  showControls(hasControls && !matchMedia(MOBILE).matches)
+  toggle.addEventListener('click', () => showControls(!guiVisible))
 
   window.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey) return
-    if (e.key === 'h') gui.show((guiVisible = !guiVisible))
+    if (e.key === 'h' && hasControls) showControls(!guiVisible)
     if (e.key === 's' && import.meta.env.DEV) saveThumbnail(exp, container)
   })
 }

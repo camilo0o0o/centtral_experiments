@@ -8,16 +8,20 @@ export function siteHeader() {
   return el
 }
 
-// The experiment page header: "← 001 TITLE", with the description below.
+// The experiment page header: "← 001 TITLE" with the controls toggle on the right, and the description below.
+// The toggle starts hidden; shell.js shows it when the sketch registers controls.
 export function experimentHeader(exp, parent) {
   const el = document.createElement('header')
   el.className = 'header'
   el.innerHTML = `
-    <h1 class="header-title">
-      <a href="/" aria-label="All experiments">←</a>
-      <span class="header-number">${pad(exp.number)}</span>
-      <span class="title"></span>
-    </h1>
+    <div class="header-row">
+      <h1 class="header-title">
+        <a href="/" aria-label="All experiments">←</a>
+        <span class="header-number">${pad(exp.number)}</span>
+        <span class="title"></span>
+      </h1>
+      <button class="header-toggle" type="button" aria-controls="controls" hidden></button>
+    </div>
     <p class="header-description"></p>
   `
   el.querySelector('.title').textContent = exp.title

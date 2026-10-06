@@ -1,5 +1,11 @@
 /* Header: "● EXPERIMENTS" on the grid, "← 001 TITLE" on experiment pages. */
 .header { padding: var(--space); }
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+}
 .header-title {
   display: flex;
   align-items: center;
@@ -21,6 +27,20 @@
   background: var(--color-ink-strong);
   flex: none;
 }
+/* "HIDE CONTROLS" / "SHOW CONTROLS" on experiment pages: muted text like the back arrow, ink on hover. */
+.header-toggle {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.header-toggle:hover { color: var(--color-ink); }
 .header-description { margin-top: var(--space-xs); }
 .header-description a { color: var(--color-muted); }
 .header-description a:hover { color: var(--color-ink); }
