@@ -1,4 +1,5 @@
 import { startHands } from './hands.js'
+import { startSound, STYLES } from './sound.js'
 
 // Letras derretidas (008) played with the hands: every extended fingertip the camera sees is a
 // cursor (hands.js, from 005), and the mouse still works too.
@@ -9,6 +10,9 @@ import { startHands } from './hands.js'
 //   3. blur V + threshold: vertical gaussian, then a smoothstep around the threshold level
 // Blurring and re-thresholding is what makes the letters melt: thin strokes fall under the level and
 // vanish, nearby shapes swell into each other.
+//
+// Sound (sound.js) follows the fingers through the ink: each cursor's speed times the ink under its brush,
+// sampled from a CPU copy of the text.
 
 const FONTS = {
   'plex mono': null, // theme.font, read when drawing
@@ -107,6 +111,8 @@ export default function ({ container, gui, theme }) {
     font: 'plex mono',
     weight: 700,
     size: 0.9,
+    lineLength: 12, // characters per line, 0 = no limit
+    leading: 1.05, // line height, in ems
     blurRadius: 50,
     brushSize: 160,
     trail: 1.5,
@@ -130,6 +136,13 @@ export default function ({ container, gui, theme }) {
     far: 0.08, // palm size (fraction of the camera frame) that counts as far
     near: 0.3, // … and as close
     palm: 0, // live readout
+    // sound
+    sound: false,
+    style: 'saber',
+    volume: 0.6,
+    sensitivity: 1,
+    air: 0.15, // how much moving off the letters still sounds
+    ring: true,
   }
 
   // --- controls ---
@@ -139,6 +152,8 @@ export default function ({ container, gui, theme }) {
   fText.add(params, 'font', Object.keys(FONTS)).onChange(() => drawText())
   fText.add(params, 'weight', [400, 500, 700]).onChange(() => drawText())
   fText.add(params, 'size', 0.2, 1, 0.01).onChange(() => drawText())
+  fText.add(params, 'lineLength', 0, 40, 1).name('chars per line').onChange(() => drawText())
+  fText.add(params, 'leading', 0.6, 1.6, 0.01).name('line height').onChange(() => drawText())
 
   const fBlur = gui.addFolder('blur')
   fBlur.add(params, 'blurRadius', 0, 120, 1).name('blur radius')
@@ -154,6 +169,16 @@ export default function ({ container, gui, theme }) {
   fLook.addColor(params, 'color')
   fLook.addColor(params, 'bg')
   fLook.add(params, 'view', VIEWS)
+
+  const fSound = gui.addFolder('sound')
+  fSound.add(params, 'sound').name('on')
+  fSound.add(params, 'style', STYLES)
+  fSound.add(params, 'volume', 0, 1)
+  fSound.add(params, 'sensitivity', 0.2, 4)
+  fSound.add(params, 'air', 0, 1).name('off the letters')
+  fSound.add(params, 'ring').name('ring as it hardens')
+  // Touching the sound panel is a user gesture, which is what lets the audio start
+  fSound.onChange(() => sound.unlock())
 
   const fHands = gui.addFolder('hands')
   fHands.add(params, 'videoSize', 0.08, 0.5).name('video size').onChange(() => placePreview())
@@ -239,6 +264,7 @@ export default function ({ container, gui, theme }) {
   // --- cursors ---
 
   const hands = startHands(video, params, () => ({ width, height }))
+  const sound = startSound(params)
   video.addEventListener('loadedmetadata', () => placePreview())
 
   let mouse = null // css px
@@ -247,6 +273,7 @@ export default function ({ container, gui, theme }) {
     mouse = { x: e.clientX - r.left, y: e.clientY - r.top }
   })
   canvas.addEventListener('pointerleave', () => { mouse = null })
+  canvas.addEventListener('pointerdown', () => sound.unlock())
 
   // Each cursor's position last frame, so fast moves paint a path instead of separate blobs.
   let prevPos = new Map()
@@ -264,22 +291,62 @@ export default function ({ container, gui, theme }) {
     return [r * size, strength]
   }
 
+  // How hard the cursors are moving through ink, for the sound: `touch` sums every cursor's speed × ink,
+  // `melt` grows while they do and fades like the mask
+  const sig = { touch: 0, melt: 0, present: false, pan: 0 }
+
   // Fill `segs` and `brushes` for every cursor: its path since last frame, flipped to GL's
-  // bottom-up y, and its brush.
-  function collectSegments() {
+  // bottom-up y, and its brush. Also measures the sound signals along the way.
+  function collectSegments(dt, decay) {
     const now = new Map()
     if (mouse) now.set('mouse', mouse)
     for (const [id, c] of hands.cursors) now.set(id, c)
-    let n = 0
+    let n = 0, touch = 0, melting = 0, panSum = 0
     for (const [id, c] of now) {
       if (n >= MAX_CURSORS) break
       const p = prevPos.get(id) ?? c
+      const brush = brushFor(c)
       segs.set([p.x, height - p.y, c.x, height - c.y], n * 4)
-      brushes.set(brushFor(c), n * 2)
+      brushes.set(brush, n * 2)
       n++
+
+      // speed in units of 1500 css px/s, ignoring the jitter of a resting hand
+      const speed = Math.hypot(c.x - p.x, c.y - p.y) / Math.max(dt, 1e-3)
+      const moving = (Math.max(0, speed - 40) / 1500) * params.sensitivity
+      const ink = inkUnder(c.x, c.y, brush[0]) * brush[1]
+      const t = moving * (params.air + (1 - params.air) * ink)
+      touch += t
+      melting += moving * ink
+      panSum += (c.x / Math.max(width, 1)) * 2 * t - t
     }
     prevPos = new Map([...now].map(([id, c]) => [id, { x: c.x, y: c.y }]))
+
+    sig.touch = 1 - Math.exp(-touch)
+    sig.melt = Math.min(1, sig.melt * decay + melting * dt * 3)
+    sig.present = now.size > 0
+    if (touch > 1e-3) sig.pan = panSum / touch
     return n
+  }
+
+  // A CPU copy of the text (red channel of the text canvas), to know how much ink is under a brush
+  let inkPixels = null, inkW = 0, inkH = 0
+  const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)])
+  function inkAt(x, y) {
+    const xi = Math.round(x * dpr), yi = Math.round(y * dpr)
+    if (xi < 0 || yi < 0 || xi >= inkW || yi >= inkH) return 0
+    return inkPixels[(yi * inkW + xi) * 4] / 255
+  }
+  // Ink under a brush of radius r (css px), weighted like the mask's gaussian brush
+  function inkUnder(x, y, r) {
+    if (!inkPixels) return 0
+    let sum = inkAt(x, y), wsum = 1
+    for (const [f, w] of [[0.35, 0.74], [0.7, 0.29]]) {
+      for (const [dx, dy] of RING) {
+        sum += inkAt(x + dx * r * f, y + dy * r * f) * w
+        wsum += w
+      }
+    }
+    return sum / wsum
   }
 
   // --- camera preview ---
@@ -349,14 +416,17 @@ export default function ({ container, gui, theme }) {
     const ink = rgb(params.color)
 
     // 1. mask
+    const decay = params.trail > 0 ? Math.exp(-dt * 3 / params.trail) : 0
+    const count = collectSegments(dt, decay)
+    sound.update(dt, sig)
     use(progs.mask, maskB)
     bindTex(0, maskA.tex)
     gl.uniform1i(progs.mask.u.prev, 0)
-    gl.uniform1i(progs.mask.u.count, collectSegments())
+    gl.uniform1i(progs.mask.u.count, count)
     gl.uniform4fv(progs.mask.u['segs[0]'], segs)
     gl.uniform2fv(progs.mask.u['brushes[0]'], brushes)
     gl.uniform2f(progs.mask.u.res, width, height)
-    gl.uniform1f(progs.mask.u.decay, params.trail > 0 ? Math.exp(-dt * 3 / params.trail) : 0)
+    gl.uniform1f(progs.mask.u.decay, decay)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     ;[maskA, maskB] = [maskB, maskA]
 
@@ -401,7 +471,7 @@ export default function ({ container, gui, theme }) {
     tctx.fillStyle = '#000'
     tctx.fillRect(0, 0, W, H)
 
-    const text = params.text || ' '
+    const lines = wrap(params.text, params.lineLength)
     const family = FONTS[params.font] ?? theme.font
     const fontAt = (px) => `${params.weight} ${px}px ${family}`
 
@@ -412,26 +482,40 @@ export default function ({ container, gui, theme }) {
       document.fonts.load(probe).then(() => drawText())
     }
 
-    // Fit the word to the canvas at 100px, then scale.
+    // Fit the block of lines to the canvas at 100px, then scale.
     tctx.font = fontAt(100)
-    let m = tctx.measureText(text)
-    const tw = m.actualBoundingBoxLeft + m.actualBoundingBoxRight
-    const th = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
-    const fit = Math.min((W * 0.9) / Math.max(tw, 1), (H * 0.8) / Math.max(th, 1))
-    tctx.font = fontAt(100 * fit * params.size)
-    m = tctx.measureText(text)
+    const fit = measure(lines, 100)
+    const scale = Math.min((W * 0.9) / Math.max(fit.w, 1), (H * 0.8) / Math.max(fit.h, 1))
+    const px = 100 * scale * params.size
+    tctx.font = fontAt(px)
+    const block = measure(lines, px)
 
-    // Center on the ink, not the em box.
-    const x = W / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2
-    const y = H / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2
+    // Center the block, and each line, on the ink rather than the em box.
+    const top = H / 2 - block.h / 2 + block.ms[0].actualBoundingBoxAscent
     tctx.fillStyle = '#fff'
-    tctx.fillText(text, x, y)
+    lines.forEach((line, i) => {
+      const m = block.ms[i]
+      const x = W / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2
+      tctx.fillText(line, x, top + i * px * params.leading)
+    })
+    inkPixels = tctx.getImageData(0, 0, W, H).data
+    inkW = W
+    inkH = H
 
     gl.bindTexture(gl.TEXTURE_2D, textTex)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textCanvas)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.generateMipmap(gl.TEXTURE_2D)
+  }
+
+  // Ink size of a block of lines drawn with the current font at `px`: widest line, and the height from
+  // the first line's top to the last line's bottom.
+  function measure(lines, px) {
+    const ms = lines.map((line) => tctx.measureText(line))
+    const w = Math.max(...ms.map((m) => m.actualBoundingBoxLeft + m.actualBoundingBoxRight))
+    const h = ms[0].actualBoundingBoxAscent + (lines.length - 1) * px * params.leading + ms.at(-1).actualBoundingBoxDescent
+    return { ms, w, h }
   }
 
   function clearMask() {
@@ -511,4 +595,27 @@ function parse(color) {
   swatch.fillRect(0, 0, 1, 1)
   const d = swatch.getImageData(0, 0, 1, 1).data
   return [d[0] / 255, d[1] / 255, d[2] / 255]
+}
+
+// Split text into lines of at most `max` characters, breaking at spaces; a word longer than a line is cut.
+function wrap(text, max) {
+  if (!max) return [text || ' ']
+  const lines = []
+  let line = ''
+  for (let word of text.split(/\s+/).filter(Boolean)) {
+    while (word.length > max) {
+      if (line) lines.push(line)
+      line = ''
+      lines.push(word.slice(0, max))
+      word = word.slice(max)
+    }
+    if (!line) line = word
+    else if (line.length + 1 + word.length <= max) line += ' ' + word
+    else {
+      lines.push(line)
+      line = word
+    }
+  }
+  if (line) lines.push(line)
+  return lines.length ? lines : [' ']
 }
