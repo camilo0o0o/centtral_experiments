@@ -1,0 +1,5 @@
+{
+  "title": "Esquinas dobladas",
+  "description": "Sube una imagen y dobla sus esquinas como si fueran de papel. Cada doblez se define con dos porcentajes, uno sobre el borde horizontal y otro sobre el vertical, y la parte doblada muestra el color del reverso.",
+  "date": "2026-10-09"
+}
